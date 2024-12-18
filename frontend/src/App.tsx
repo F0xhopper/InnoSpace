@@ -1,36 +1,185 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Button, Container, Typography, Box } from "@mui/material";
+import React, { useState, useRef, useEffect } from "react";
+import { Box, Button, Typography, Paper, Stack } from "@mui/material";
 
-import "./App.css";
+interface Position {
+  x: number;
+  y: number;
+}
+interface DrawingDataPayload {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+}
+const App: React.FC = () => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [isDrawing, setIsDrawing] = useState<boolean>(false);
+  const [lastPosition, setLastPosition] = useState<Position>({ x: 0, y: 0 });
+  const [context, setContext] = useState<CanvasRenderingContext2D | null>(null);
+  const [socket, setSocket] = useState<WebSocket | null>(null);
 
-function App() {
+  useEffect(() => {
+    const ws = new WebSocket("ws://localhost:8080");
+
+    ws.onopen = () => {
+      console.log("Connected to WebSocket server");
+    };
+
+    ws.onmessage = (event) => {
+      const {
+        type,
+        drawingData,
+      }: { type: string; drawingData: DrawingDataPayload[] } = JSON.parse(
+        event.data
+      );
+      if (type === "clear-space") {
+        clearCanvas();
+      }
+      if (type === "draw-line") {
+        drawingData.forEach((element) => {
+          const { startX, startY, endX, endY } = element;
+
+          if (context) {
+            context.beginPath();
+            context.moveTo(startX, startY);
+            context.lineTo(endX, endY);
+            context.stroke();
+          }
+        });
+      }
+    };
+
+    ws.onclose = () => {
+      console.log("WebSocket connection closed");
+    };
+
+    setSocket(ws);
+
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        setContext(ctx);
+        ctx.lineWidth = 5;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "black";
+      }
+    }
+
+    return () => {
+      ws.close();
+    };
+  }, [context]);
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    setIsDrawing(true);
+    const { offsetX, offsetY } = e.nativeEvent;
+    setLastPosition({ x: offsetX, y: offsetY });
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !context || !socket) return;
+
+    const { offsetX, offsetY } = e.nativeEvent;
+    const { x, y } = lastPosition;
+
+    context.beginPath();
+    context.moveTo(x, y);
+    context.lineTo(offsetX, offsetY);
+    context.stroke();
+
+    setLastPosition({ x: offsetX, y: offsetY });
+
+    socket.send(
+      JSON.stringify({
+        event: "draw-line",
+        payload: {
+          startX: x,
+          startY: y,
+          endX: offsetX,
+          endY: offsetY,
+        },
+      })
+    );
+  };
+  const handleClearBoard = () => {
+    if (socket) {
+      socket.send(JSON.stringify({ event: "clear-space" }));
+    }
+    clearCanvas();
+  };
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (canvas && context) {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  };
+
   return (
-    <Container>
-      <Typography variant="h1" gutterBottom>
-        InnoSpace
-      </Typography>
+    <Box
+      sx={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+
+        padding: 2,
+      }}
+    >
       <Box
         sx={{
-          border: "2px solid #000",
-          width: "100%",
-          height: "500px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 2,
+        }}
+      >
+        <img width={250} src="InnoSpace-Logo.png"></img>
+      </Box>
+
+      <Box
+        sx={{
           position: "relative",
-          backgroundColor: "#fff",
+          border: "2px solid #ddd",
+          borderRadius: "8px",
+          overflow: "hidden",
+          marginBottom: 1,
         }}
       >
         <canvas
-          width="100%"
-          height="100%"
-          style={{ position: "absolute", top: 0, left: 0 }}
+          ref={canvasRef}
+          width={500}
+          height={500}
+          style={{
+            backgroundColor: "#ffffff",
+            display: "block",
+            borderRadius: "8px",
+          }}
+          onMouseDown={startDrawing}
+          onMouseUp={stopDrawing}
+          onMouseLeave={stopDrawing}
+          onMouseMove={draw}
         />
-      </Box>{" "}
-      <Box mb={2}>
-        <Button variant="contained" color="primary">
+      </Box>
+
+      <Stack
+        direction="row"
+        spacing={1}
+        justifyContent="center"
+        sx={{ marginTop: 1 }}
+      >
+        <Button variant="contained" color="primary" onClick={handleClearBoard}>
           Clear Board
         </Button>
-      </Box>
-    </Container>
+      </Stack>
+    </Box>
   );
-}
+};
 
 export default App;

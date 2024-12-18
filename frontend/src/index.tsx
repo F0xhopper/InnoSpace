@@ -5,12 +5,15 @@ import App from "./App";
 import "./index.css";
 
 const theme = createTheme({
+  typography: {
+    fontFamily: "system-ui",
+  },
   palette: {
     primary: {
-      main: "#1976d2",
+      main: "#343434",
     },
     secondary: {
-      main: "#d32f2f",
+      main: "#f0f3f4",
     },
   },
 });
